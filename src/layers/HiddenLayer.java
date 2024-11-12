@@ -3,24 +3,43 @@ package layers;
 import math.ActivationFunctions;
 import math.Derivatives;
 
+import java.util.Arrays;
 import java.util.Random;
 
 public class HiddenLayer extends Layer {
     private float[][] weights;
-    private int inputLen;
-    private int outputLen;
+
+    private float[] biases;
+    public int inputLen;
+    public int outputLen;
     private float learningRate;
     private float[] z;
     private float[] x;
-    public HiddenLayer(int inputLen, int outputLen) {
+
+    //need to init these for batch gradient updates - gradient of weight and bias (L_z == L_b)
+    float[][] L_w;
+    float[] L_z;
+
+    float momentum;
+
+    private float[][] velocityWeights;
+    private float[] velocityBiases;
+    public HiddenLayer(int inputLen, int outputLen, float learningRate, float momentum) {
         this.inputLen = inputLen;
         this.outputLen = outputLen;
 
         this.x = new float[inputLen];
 
-        learningRate = 0.01F;
+        this.learningRate = learningRate;
+        this.momentum = momentum;
 
+        biases = new float[outputLen];
         weights = new float[inputLen][outputLen];
+        velocityWeights = new float[inputLen][outputLen];
+        velocityBiases = new float[outputLen];
+
+        L_w = new float[inputLen][outputLen];
+        L_z = new float[outputLen];
         setWeights();
     }
 
@@ -29,8 +48,9 @@ public class HiddenLayer extends Layer {
         x = input;
         z = new float[outputLen];
 
-        for(int i=0; i<inputLen; i++){
-            for(int j=0; j<outputLen; j++){
+        for (int j = 0; j < outputLen; j++) {
+            z[j] = biases[j];
+            for (int i = 0; i < inputLen; i++) {
                 z[j] += input[i] * weights[i][j];
             }
         }
@@ -39,55 +59,98 @@ public class HiddenLayer extends Layer {
             out[j] = ActivationFunctions.ReLU(z[j]);
         }
 
+        //System.out.println("Hidden layer forward pass: " + Arrays.toString(out));
+
         return out;
     }
-    @Override
-    public float[] calcOutput(float[] data) {
-        float[] fp = forwardPass(data);
-        return (nextLayer != null) ? nextLayer.calcOutput(fp) : fp;
-    }
 
     @Override
-    public void backProp(float[] dloss_doutput) {
-        float[] dLdX = new float[inputLen];
+    public float[] backProp(float[] L_y) {
+        //L_y == gradient of loss w.r.t activations from the next layer
+        //compute gradients of loss L with respect to w, b, inputs x:
+        //gradient of loss with respect to pre-activated values z
+        //float[] L_z = new float[outputLen]; // gradient of loss with respect to pre-activation values
+        L_z = new float[outputLen]; // gradient of loss with respect to pre-activation values
+        float[] L_x = new float[inputLen]; //gradient of loss w.r.t inputs
+        //float[][] L_w = new float[inputLen][outputLen]; //gradient of loss w.r.t weights
+        L_w = new float[inputLen][outputLen]; //gradient of loss w.r.t weights
 
-        for(int k=0; k<inputLen; k++){ //for each input neuron k, calculate the gradint of loss with respect to EACH w[k][j]
-            float sum_dLdX = 0;
-
-            for(int j=0; j<outputLen; j++){ //for each output neuron ...
-                float dOdZ = Derivatives.D_ReLU(z[j]); //der of relu act.func. with respect to z[j]
-                float dZdW = x[k]; //der. of z[j] with respect to w[k][j] => this is simply the input x[k]
-
-                // GRADIENT CALCULATION
-                float dLdW = dloss_doutput[j] * dOdZ * dZdW; //gradient of loss with respect to w[k][j]
-
-                //then adjust the w[k][j] by SUBTRACTING the scaled gradient
-
-                weights[k][j] -= dLdW * learningRate;
-
-                //for each input neuron k we accumulate the gradient loss
-                sum_dLdX += dloss_doutput[j] * dOdZ * weights[k][j];
+        //recieve gradients from the next layer
+        for(int r=0; r<L_y.length; r++){
+            for(int j=0; j<outputLen; j++){
+                L_z[r] += L_y[r] * weights[r][j];
             }
-
-            dLdX[k] = sum_dLdX;
         }
 
-        //then we pass the gradient of loss with respect to layers inputs to the PREV LAYER => backprop
-
-        if(prevLayer != null){
-            prevLayer.backProp(dLdX);
+        for(int j=0; j<outputLen; j++){
+            L_z[j] *= Derivatives.D_ReLU(z[j]);
         }
+
+        for(int i=0;i<inputLen;i++){
+            for(int j=0;j<outputLen;j++){
+                L_w[i][j] = L_z[j] * x[i]; //x = input ti the hidden neuron
+                L_x[i] += weights[i][j] * L_z[j];
+                // --- WEIGHTS UPDATE ---
+                //weights[i][j] -= learningRate * L_w[i][j];
+            }
+        }
+
+        //gradient of loss w.r.t biases == L_z
+        //gradient of loss w.r.t inputs
+
+        //for(int j=0;j<outputLen;j++){
+            // --- BIAS UPDATE ---
+        //    biases[j] -= learningRate * L_z[j];
+        //}
+
+        return L_z;
     }
 
     public void setWeights(){
         Random r = new Random();
 
         float stddev = (float) Math.sqrt(2.0 / inputLen);
-        for (int i = 0; i < outputLen; i++) {
-            for (int j = 0; j < inputLen; j++) {
+        for (int i = 0; i < inputLen; i++) {
+            for (int j = 0; j < outputLen; j++) {
                 weights[i][j] = (float) r.nextGaussian() * stddev;
             }
         }
+
+        for (int j = 0; j < outputLen; j++) {
+            biases[j] = 0.01f;
+        }
+    }
+
+    public void updateParameters(float[][] accumulatedGradientsW, float[] accumulatedGradientsB, int batchSize) {
+        for (int i = 0; i < weights.length; i++) {
+            for (int j = 0; j < weights[i].length; j++) {
+                weights[i][j] -= (learningRate / batchSize) * accumulatedGradientsW[i][j];
+            }
+        }
+        for (int j = 0; j < biases.length; j++) {
+            biases[j] -= (learningRate / batchSize) * accumulatedGradientsB[j];
+        }
+    }
+
+    public void updateParametersVelocity(float[][] accumulatedGradientsW, float[] accumulatedGradientsB, int batchSize) {
+        for (int i = 0; i < weights.length; i++) {
+            for (int j = 0; j < weights[i].length; j++) {
+                velocityWeights[i][j] = momentum * velocityWeights[i][j] - (learningRate / batchSize) * accumulatedGradientsW[i][j];
+                weights[i][j] += velocityWeights[i][j];
+            }
+        }
+        for (int j = 0; j < biases.length; j++) {
+            velocityBiases[j] = momentum * velocityBiases[j] - (learningRate / batchSize) * accumulatedGradientsB[j];
+            biases[j] += velocityBiases[j];
+        }
+    }
+
+    public float[][] getWeightGradients(){
+        return L_w;
+    }
+
+    public float[] getBiasGradients(){
+        return L_z;
     }
 
 }

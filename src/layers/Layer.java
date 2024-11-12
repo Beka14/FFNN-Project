@@ -21,6 +21,5 @@ public abstract class Layer {
     public Layer nextLayer;
     public Layer prevLayer;
 
-    public abstract float[] calcOutput(float[] data);
-    public abstract void backProp(float[] dloss_doutput);
+    public abstract float[] backProp(float[] dloss_doutput);
 }
