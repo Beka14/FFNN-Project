@@ -18,7 +18,6 @@ public class OutputLayer {
     //need to init these for batch gradient updates - gradient of weight and bias (L_z == L_b)
     float[][] L_w;
     float[] L_softmax;
-
     float momentum;
     private float[][] velocityWeights;
     private float[] velocityBiases;
@@ -178,5 +177,9 @@ public class OutputLayer {
 
     public float[] getBiasGradients(){
         return L_softmax;
+    }
+
+    public void setLearningRate(float newRate){
+        learningRate = newRate;
     }
 }

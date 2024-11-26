@@ -16,6 +16,10 @@ public class HiddenLayer extends Layer {
     private float[] z;
     private float[] x;
 
+    private float[] dropout_mask;
+    private float dropout_rate;
+    private boolean training;
+
     //need to init these for batch gradient updates - gradient of weight and bias (L_z == L_b)
     float[][] L_w;
     float[] L_z;
@@ -24,9 +28,11 @@ public class HiddenLayer extends Layer {
 
     private float[][] velocityWeights;
     private float[] velocityBiases;
-    public HiddenLayer(int inputLen, int outputLen, float learningRate, float momentum) {
+    public HiddenLayer(int inputLen, int outputLen, float learningRate, float momentum, float dropout_rate) {
         this.inputLen = inputLen;
         this.outputLen = outputLen;
+        this.dropout_rate = dropout_rate;
+        training = true;
 
         this.x = new float[inputLen];
 
@@ -56,7 +62,17 @@ public class HiddenLayer extends Layer {
         }
 
         for(int j = 0; j < outputLen; j++){
-            out[j] = ActivationFunctions.ReLU(z[j]);
+            out[j] = ActivationFunctions.LeakyReLU(z[j]);
+        }
+
+
+        if (training) {
+            dropout_mask = new float[outputLen];
+            for (int j = 0; j < outputLen; j++) {
+                dropout_mask[j] = Math.random() > dropout_rate ? 1.0f : 0.0f;
+                out[j] *= dropout_mask[j];
+                out[j] /= (1 - dropout_rate);
+            }
         }
 
         //System.out.println("Hidden layer forward pass: " + Arrays.toString(out));
@@ -83,7 +99,10 @@ public class HiddenLayer extends Layer {
         }
 
         for(int j=0; j<outputLen; j++){
-            L_z[j] *= Derivatives.D_ReLU(z[j]);
+            L_z[j] *= Derivatives.D_LeakyReLU(z[j]);
+            if (training) {
+                L_z[j] *= dropout_mask[j]; // Apply the same dropout mask during backprop
+            }
         }
 
         for(int i=0;i<inputLen;i++){
@@ -117,7 +136,7 @@ public class HiddenLayer extends Layer {
         }
 
         for (int j = 0; j < outputLen; j++) {
-            biases[j] = 0.01f;
+            biases[j] = 0f;
         }
     }
 
@@ -152,5 +171,12 @@ public class HiddenLayer extends Layer {
     public float[] getBiasGradients(){
         return L_z;
     }
+
+    public void setLearningRate(float newRate){
+        learningRate = newRate;
+    }
+
+    public void setTraining(boolean training) { this.training = training; }
+
 
 }
