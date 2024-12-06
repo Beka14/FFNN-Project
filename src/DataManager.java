@@ -1,5 +1,3 @@
-package data;
-
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
@@ -16,7 +14,6 @@ public class DataManager {
     public static float[][] loadImageData(String filePath, int numRows, int numCols, boolean training) throws IOException {
         float[][] data = new float[numRows][numCols];
 
-        // Load the data and normalize pixel values (scaling between 0 and 1 initially)
         try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {
             String line;
             int row = 0;
@@ -24,19 +21,19 @@ public class DataManager {
             while ((line = br.readLine()) != null) {
                 String[] values = line.split(",");
                 for (int col = 0; col < values.length; col++) {
-                    data[row][col] = Float.parseFloat(values[col]) / 255.0f;
+                    data[row][col] = Float.parseFloat(values[col]) / 255.0f; //normalizing the data first
                 }
                 row++;
             }
         }
 
-        // Calculate the global mean and standard deviation
+        // calc the global mean and standard deviation only if training and then use it later for testing
         if (training) {
             mean = calculateMean(data);
             std = calculateStd(data, mean);
         }
 
-        // Normalize the data using the global mean and standard deviation
+        // normalize the data using the global mean and standard deviation
         for (int i = 0; i < numRows; i++) {
             for (int j = 0; j < numCols; j++) {
                 data[i][j] = (data[i][j] - mean) / std;
@@ -60,6 +57,14 @@ public class DataManager {
         }
 
         return labels;
+    }
+
+    public static float[][] toOneHot(int[] labels, int numClasses) {
+        float[][] oneHot = new float[labels.length][numClasses];
+        for (int i = 0; i < labels.length; i++) {
+            oneHot[i][labels[i]] = 1.0f;
+        }
+        return oneHot;
     }
 
     private static float calculateMean(float[][] data) {
@@ -90,9 +95,8 @@ public class DataManager {
         return (float) Math.sqrt(sumSquaredDifferences / count);
     }
 
-    //calculate one mean and one standart deviation and use it to normalize the data
 
-    // Shuffle indices instead of data
+    // shuffle indices instead of data
     public static int[] generateShuffledIndices(int size) {
         int[] indices = new int[size];
         for (int i = 0; i < size; i++) {
@@ -110,7 +114,7 @@ public class DataManager {
         return indices;
     }
 
-    // Split data and labels
+    // split data and labels for training and testing
     public static DataSplit splitData(float[][] data, int[] labels, float splitRatio) {
         int totalSize = data.length;
         int trainSize = (int) (totalSize * splitRatio);
@@ -169,14 +173,15 @@ public class DataManager {
 
     public static class MiniBatch {
         public float[][] data;
-        public float[] labels;
+        public int[] labels;
 
-        public MiniBatch(float[][] data, float[] labels) {
+        public MiniBatch(float[][] data, int[] labels) {
             this.data = data;
             this.labels = labels;
         }
     }
 
+    //creates minibatches
     public static MiniBatch[] getMiniBatches(float[][] data, int[] labels, int batchSize) {
         int numExamples = data.length;
         int numFeatures = data[0].length;
@@ -198,7 +203,7 @@ public class DataManager {
             int currBSize = end - start;
 
             float[][] Bdata = new float[currBSize][numFeatures];
-            float[] Blabels = new float[currBSize];
+            int[] Blabels = new int[currBSize];
 
             for (int i = 0; i < currBSize; i++) {
                 int index = indices[start + i];
